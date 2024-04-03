@@ -3,6 +3,7 @@ from __future__ import annotations
 import locust
 
 import atexit
+import collections
 import errno
 import gc
 import inspect
@@ -13,6 +14,7 @@ import signal
 import sys
 import time
 import traceback
+from typing import Callable
 
 import gevent
 
@@ -33,6 +35,7 @@ from .stats import (
     stats_printer,
 )
 from .user.inspectuser import print_task_ratio, print_task_ratio_json
+from .user.task import TaskSetMeta
 from .util.load_locustfile import load_locustfile
 from .util.timespan import parse_timespan
 
@@ -313,9 +316,28 @@ def main():
             sys.exit(1)
 
     if options.list_commands:
+        INDENT_CHAR = " "
+        INDENT_WIDTH = 4
+        INDENT = INDENT_CHAR * INDENT_WIDTH
+
+        def _print_tasks(tasks: list[Callable | TaskSetMeta], nesting=2):
+            """Recursively prints a list of tasks"""
+            for task, count in collections.Counter(tasks).items():
+                tags = getattr(task, "locust_tag_set", set())
+                tags_str = " ".join(f"@{tag}" for tag in tags)
+                count_str = f"({count})" if count > 1 else ""
+                print(f"{INDENT * nesting} {task.__name__} {count_str} {tags_str}")
+                if isinstance(task, TaskSetMeta):
+                    _print_tasks(task.tasks, nesting=nesting + 1)
+
         print("Available Users:")
-        for name in user_classes:
-            print("    " + name)
+        for user_cls_name, cls in user_classes.items():
+            print(f"{INDENT} {user_cls_name}")
+            _print_tasks(cls.tasks)
+
+        print("Available Load Shapes:")
+        for load_shape_name, cls in available_shape_classes.items():
+            print(f"{INDENT} {load_shape_name}")
         sys.exit(0)
 
     if not user_classes:
